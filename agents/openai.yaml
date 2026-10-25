@@ -1,0 +1,6 @@
+interface:
+  display_name: "С�̾��������"
+  short_description: "����Ӣ������������Ĳ�ԭλ����������ԭ��ҳ��������ͼ������"
+  default_prompt: "ʹ�� $xiaolujing-review ����Ӣ��������С�̾����ģ�ֱ��������ȷ�ϴ��󲢱���ԭ��ʽ��"
+policy:
+  allow_implicit_invocation: true

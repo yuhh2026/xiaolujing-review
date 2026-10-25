@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+work/
+cache/
+*.pdf
+*.ttf
+*.otf
+*.ttc
+*.part
+.DS_Store
