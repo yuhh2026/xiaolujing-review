@@ -1,4 +1,4 @@
-"""����Ӣ�Ľ���ԭλУ�룺��������ԭ�����塢�ֺż�ÿ�����ֻ���λ�á�"""
+"""对照英文进行原位校译：复用译文原有字体、字号及每个文字绘制位置。"""
 from pathlib import Path
 from io import BytesIO
 import json
@@ -11,11 +11,11 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ContentStream, ByteStringObject, ArrayObject, FloatObject, NameObject, DictionaryObject, DecodedStreamObject
 
 if not __debug__:
-    raise SystemExit("������python -O���У�ԭλ�༭��Ҫ����ȫ�����")
+    raise SystemExit("请勿用python -O运行：原位编辑需要启用全部检查")
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 import argparse, hashlib
-parser = argparse.ArgumentParser(description="����ԭ�����Unicode�ֲ�ԭλ�滻����֧�ֵ��Ű���ȷ�ܾ�")
+parser = argparse.ArgumentParser(description="复用原字体的Unicode字槽原位替换；不支持的排版明确拒绝")
 parser.add_argument("--pdf", required=True)
 parser.add_argument("--manifest", required=True)
 parser.add_argument("--output", required=True)
@@ -26,17 +26,17 @@ SOURCE = Path(config.pdf).resolve()
 OUTPUT = Path(config.output).resolve()
 ROOT = Path(config.work).resolve()
 ROOT.mkdir(parents=True, exist_ok=True)
-assert SOURCE != OUTPUT, "������ֻд����У��棬��֤�����б���д��"
-assert not OUTPUT.exists(), "����Ѵ��ڣ�����֤��ѡ���µ���ʱ����������󸲸�"
+assert SOURCE != OUTPUT, "本工具只写独立校译版，验证后另行备份写回"
+assert not OUTPUT.exists(), "输出已存在；先验证或选择新的临时输出，避免误覆盖"
 doc = json.loads(Path(config.manifest).read_text(encoding="utf-8"))
-assert doc.get("source_sha256") == hashlib.sha256(SOURCE.read_bytes()).hexdigest(), "ԴPDF��ϣ����"
+assert doc.get("source_sha256") == hashlib.sha256(SOURCE.read_bytes()).hexdigest(), "源PDF哈希不符"
 entries = doc["changes"]
-assert entries, "�嵥Ϊ��"
+assert entries, "清单为空"
 RULES = []
 for c in entries:
     assert isinstance(c.get("page"), int) and c["page"] > 0
     assert c.get("basis") and c.get("old") and c["old"] != c["new"]
-    assert len(c["old"]) == len(c["new"]), "���·��ֻ�������ַ����޸ģ�����Ϊ�������ı�ԭ��"
+    assert len(c["old"]) == len(c["new"]), "快捷路径只处理等字符槽修改；不得为凑字数改变原意"
     RULES.append((c["page"], c["old"], c["new"], c["basis"]))
 
 def raw_bytes(value):
@@ -44,7 +44,7 @@ def raw_bytes(value):
 
 
 def width(font, code):
-    """��ȡԭPDF�ֿ�����λΪǧ��֮һ�ֺš�"""
+    """读取原PDF字宽，单位为千分之一字号。"""
     if font["/Subtype"] == "/Type0":
         d = font["/DescendantFonts"][0].get_object()
         arr = d.get("/W", [])
@@ -60,7 +60,7 @@ def width(font, code):
                     return float(arr[j + 2])
                 j += 3
         return float(d.get("/DW", 1000))
-    # ��׼��������ĵȳ���ĸ�滻�ڱ��ֲ��ı����ݣ���˲���Ҫ�鹹�ֿ���
+    # 标准西文字体的等长字母替换在本轮不改变内容，因此不需要虚构字宽。
     arr = font.get("/Widths")
     if arr:
         return float(arr[code - int(font.get("/FirstChar", 0))])
@@ -78,7 +78,7 @@ glyph_check_fonts = {}
 
 
 def proof_font(font, resources):
-    """Ϊ�滻�ֽ���ͬ���帱�����������岹��Ӱ��ԭ���κ�δ���ַ���"""
+    """为替换字建立同字体副本，避免字体补字影响原文任何未改字符。"""
     desc = font["/DescendantFonts"][0].get_object()
     old_file = desc["/FontDescriptor"]["/FontFile2"]
     key = old_file.indirect_reference.idnum
@@ -136,29 +136,29 @@ for page_no, page in enumerate(writer.pages, 1):
             continue
         start = 0
         while (pos := joined.find(old, start)) >= 0:
-            # ����������������ͨ�ô��滻�������ھ������������ظ��滻ͬһλ�á�
+            # 完整政策名优先于通用词替换，避免在旧文字索引上重复替换同一位置。
             if any((slots[pos + k][0], slots[pos + k][1]) in pending for k in range(len(old))):
                 start = pos + len(old)
                 continue
             for offset, char in enumerate(new):
                 op_i, j, previous = slots[pos + offset]
                 if previous != char:
-                    assert (op_i, j) not in pending, (page_no, old, "�����ص�")
+                    assert (op_i, j) not in pending, (page_no, old, "规则重叠")
                     font = fonts[font_for_op[op_i]].get_object()
                     assert font["/Subtype"] == "/Type0", (page_no, previous, char, font_for_op[op_i])
-                    # ʹ��ԭ�����CIDӳ�䣻ȱ��ʱ��ֹ�����滻���塢���������
+                    # 使用原字体的CID映射；缺字时终止，不替换字体、不输出方框。
                     d = font["/DescendantFonts"][0].get_object()
                     cmap = d["/CIDToGIDMap"].get_data()
                     assert ord(char) < 65536
                     assert int.from_bytes(cmap[ord(char) * 2:ord(char) * 2 + 2], "big") != 0, char
-                    # ֻ��CID���ӦUnicode���ֲۿ���һ��ʱ���ÿ��·����
+                    # 只有CID真对应Unicode且字槽宽度一致时才用快捷路径。
                     font_key = d["/FontDescriptor"]["/FontFile2"].indirect_reference.idnum
                     if font_key not in glyph_check_fonts:
                         glyph_check_fonts[font_key] = TTFont(BytesIO(d["/FontDescriptor"]["/FontFile2"].get_data()), lazy=True)
                     check_font = glyph_check_fonts[font_key]
                     name = check_font.getBestCmap().get(ord(previous))
-                    assert name and check_font.getGlyphID(name) == int.from_bytes(cmap[ord(previous)*2:ord(previous)*2+2], "big"), "CID����Unicode����ר������"
-                    assert width(font, ord(previous)) == width(font, ord(char)), "���ֿ����ʺ�ԭ�ֲۣ����Զ�ѹ������"
+                    assert name and check_font.getGlyphID(name) == int.from_bytes(cmap[ord(previous)*2:ord(previous)*2+2], "big"), "CID不是Unicode，需专门适配"
+                    assert width(font, ord(previous)) == width(font, ord(char)), "新字宽不适合原字槽，不自动压缩字体"
                     resource_name, key = proof_font(font, fonts)
                     glyph_requests[key][2].add(char)
                     replacement_font[op_i] = resource_name
@@ -179,7 +179,7 @@ for page_no, page in enumerate(writer.pages, 1):
         if abs(new_w - old_w) < 0.001:
             stream.operations[op_i] = ([content], b"Tj")
         else:
-            # ����ԭ�ֲ��ƽ������䣬�������֡���β����ҳ�����ƶ���
+            # 保持原字槽推进量不变，后续文字、行尾、分页不会移动。
             stream.operations[op_i] = ([ArrayObject([content, FloatObject(new_w - old_w)])], b"TJ")
         size, _ = state_for_op[op_i]
         wrapped[op_i] = [
@@ -190,9 +190,9 @@ for page_no, page in enumerate(writer.pages, 1):
     stream.operations = [entry for i, original in enumerate(stream.operations) for entry in wrapped.get(i, [original])]
     page.replace_contents(stream)
 
-# ԭPDFΪ����CID���Ӽ����壬cmap�����Կ��ܶ�Ӧ��������
-# �������滻�ֵĿ�����������ԭ���Ρ��ֿ���������������Դ���ֲ��䡣
-# Noto CJK Serif��˼Դ����ΪͬԴ������Ŀ��ʹ�ùٷ�SC�ֿ��400/700���ء�
+# 原PDF为保留CID的子集字体，cmap非零仍可能对应空轮廓。
+# 仅补齐替换字的空轮廓，其余原字形、字宽、坐标与字体资源保持不变。
+# Noto CJK Serif与思源宋体为同源字形项目；使用官方SC字库的400/700字重。
 full_font_path = Path(config.fallback_font).resolve() if config.fallback_font else None
 full_fonts = {}
 filled = []
@@ -204,7 +204,7 @@ for key, (font_file, base_name, chars) in glyph_requests.items():
         continue
     weight = 700 if "Bold" in base_name else 400
     if weight not in full_fonts:
-        assert full_font_path and full_font_path.exists(), "�滻��ȱ����������ƥ��ԭ����������ֿ⣬���Զ�������"
+        assert full_font_path and full_font_path.exists(), "替换字缺少轮廓；需匹配原字体的完整字库，不自动换宋体"
         cache = Path.home() / ".cache" / "xiaolujing-review" / "static-fonts"
         cache.mkdir(parents=True, exist_ok=True)
         cached = cache / (hashlib.sha256(full_font_path.read_bytes()).hexdigest() + "-" + str(weight) + ".ttf")
@@ -233,10 +233,10 @@ for key, (font_file, base_name, chars) in glyph_requests.items():
     font_file.set_data(buf.getvalue())
     font_file[NameObject("/Length1")] = __import__("pypdf").generic.NumberObject(len(buf.getvalue()))
 
-# ���й�����밴Ԥ��ƥ�䣻�κ�δӦ�������ֹ�������������©�ġ�
+# 所有规则必须按预期匹配；任何未应用项会阻止输出，不能悄悄漏改。
 for entry in entries:
     found = sum(x["page"] == entry["page"] and x["old"] == entry["old"] for x in log)
-    assert found == entry.get("expected_count", 1), ("ƥ��������", entry["page"], entry["old"], found)
+    assert found == entry.get("expected_count", 1), ("匹配数不符", entry["page"], entry["old"], found)
 assert hashlib.sha256(SOURCE.read_bytes()).hexdigest() == doc["source_sha256"]
 OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 staging = OUTPUT.with_name(OUTPUT.name + ".part")

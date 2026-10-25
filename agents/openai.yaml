@@ -1,6 +1,6 @@
 interface:
-  display_name: "С�̾��������"
-  short_description: "����Ӣ������������Ĳ�ԭλ����������ԭ��ҳ��������ͼ������"
-  default_prompt: "ʹ�� $xiaolujing-review ����Ӣ��������С�̾����ģ�ֱ��������ȷ�ϴ��󲢱���ԭ��ʽ��"
+  display_name: "小绿鲸译文审核"
+  short_description: "对照英文审核论文译文并原位纠错，保留原分页、字体与图表布局"
+  default_prompt: "使用 $xiaolujing-review 对照英文审核这份小绿鲸译文，直接修正已确认错误并保留原格式。"
 policy:
   allow_implicit_invocation: true
